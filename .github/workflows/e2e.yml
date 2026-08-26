@@ -11,8 +11,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
+    strategy:
+      fail-fast: false
+      matrix:
+        daemon_mode: [direct, daemons]
+    name: ${{ matrix.daemon_mode }}
     env:
+      DAEMON_MODE: ${{ matrix.daemon_mode }}
       OIDC_ISSUER: https://login.aai.lifescience-ri.eu/oidc/
       OIDC_TOKEN_URL: https://login.aai.lifescience-ri.eu/oidc/token
       OIDC_CLIENT_ID: ${{ secrets.LS_AAI_DEV_OIDC_CLIENT_ID }}
@@ -35,7 +40,7 @@ jobs:
             configs/rucio/idpsecrets.json
 
       - name: Start the stack
-        run: make start
+        run: make start DAEMON_MODE=${{ matrix.daemon_mode }}
 
       - name: Init testbed (accounts, RSEs, OIDC seed)
         run: make init

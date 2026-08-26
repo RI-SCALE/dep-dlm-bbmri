@@ -1,0 +1,15 @@
+*.pem
+*.key
+*.srl
+*.csr
+*.namespaces
+*.signing_policy
+!rucio_ca.key.pem
+!rucio_ca.pem
+!tls_ca_bundle.pem
+__pycache__
+.pytest_cache
+*.0
+envs/*.env
+!envs/*.env.example
+.DS_Store

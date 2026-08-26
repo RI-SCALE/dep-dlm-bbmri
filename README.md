@@ -12,6 +12,14 @@ Adapted from [dep-dlm-testbed](https://github.com/ri-scale/dep-dlm-testbed), the
 
 No cloud control plane. Everything runs via Docker Compose on your own infrastructure.
 
+## Preconditions
+
+- Docker Engine + Compose plugin (`docker compose version` succeeds). No Kubernetes/Helm needed.
+- `make`, `bash`, `openssl`, `curl` on the host.
+- An **LS AAI OIDC client** registered for this deployment — `client_id`/`client_secret` and resource indicators, before `make init` will work. See the [Runbook §1](docs/runbook.md#1-registering-the-ls-aai-client).
+
+Full preconditions (VO membership, ports, outbound access) are in the [Runbook](docs/runbook.md#preconditions).
+
 ## Quick start
 
 ```bash

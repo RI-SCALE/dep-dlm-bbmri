@@ -13,9 +13,9 @@ no Kubernetes, no GitOps, no dev container, one IdP (LS AAI).
 - Free local ports for the services in `docker-compose.yml` (Rucio, FTS
   REST `8446`, storage endpoints).
 - Outbound HTTPS to `https://login.aai.lifescience-ri.eu/`.
-- An **LS AAI OIDC client** registered for this deployment (§1) —
-  `client_id`/`client_secret` + resource indicators are required before
-  `make init` works.
+- An **LS AAI OIDC client** registered for this deployment
+  ([§1](#1-registering-the-ls-aai-client)) — `client_id`/`client_secret` +
+  resource indicators are required before `make init` works.
 - Your identity must belong to the `Life Science Community - Test
   Environment` VO — register at
   `https://signup.aai.lifescience-ri.eu/fed/registrar?vo=lifescience_test`
@@ -23,8 +23,8 @@ no Kubernetes, no GitOps, no dev container, one IdP (LS AAI).
 
 No `/etc/hosts` edits or port-forwarding needed — everything, including
 interactive `upload`/`download`, runs via `docker exec
-compose-rucio-client-1 ...` (§10), so the host never needs `gfal2` or
-`rucio-clients` installed.
+compose-rucio-client-1 ...` ([§10](#10-interactive-login--uploaddownload)),
+so the host never needs `gfal2` or `rucio-clients` installed.
 
 ## 1. Registering the LS AAI client
 
@@ -41,9 +41,9 @@ Federation Registry access.
 4. Scope set is fixed by LS AAI (`openid profile email offline_access
    eduperson_entitlement`, no `read:/`/`write:/`) — already handled via
    `configs/rucio/idpsecrets.json`'s `capabilities` block.
-5. `client_id`/`client_secret` go into `idpsecrets.json` (§3) — never
-   commit real values, only the `<valid client id>`/`<valid client
-   secret>` placeholders.
+5. `client_id`/`client_secret` go into `idpsecrets.json`
+   ([§3](#3-configure-ls-aai-credentials)) — never commit real values,
+   only the `<valid client id>`/`<valid client secret>` placeholders.
 
 ## 2. Generate certificates
 
@@ -124,8 +124,9 @@ make test-rucio-deletion
 ```
 Expect every rule to reach `state=OK` and every pytest case `PASSED`. A
 rule stuck `REPLICATING`/`STUCK` with `Failed to procure a token` in the
-conveyor logs points back at §3 (untemplated `idpsecrets.json`) or §1
-(missing resource indicators).
+conveyor logs points back at [§3](#3-configure-ls-aai-credentials)
+(untemplated `idpsecrets.json`) or
+[§1](#1-registering-the-ls-aai-client) (missing resource indicators).
 
 ## 8. Watching a transfer manually
 
@@ -170,7 +171,7 @@ without any local `gfal2`/`rucio-clients` install.
 The container's default `/opt/rucio/etc/rucio.cfg` is pinned to
 `userpass-client.cfg` (the `ddmlab` service account the automated tests
 use) — **don't replace that mount**, or `make test-rucio-transfers`
-breaks. Instead, the `oidc-client.cfg` is mounted alongside it and select it
+breaks. Instead, `oidc-client.cfg` is mounted alongside it and selected
 per-command via `RUCIO_CONFIG`.
 
 ```bash
@@ -267,6 +268,22 @@ FTS → storage works end to end for any RSE pair or dataset above — this
 mirrors exactly what `TestXRootDOIDC`, `TestTeapotOIDC`,
 `TestCrossProtocolOIDC`, and `TestDatasetOIDC` do in `make
 test-rucio-transfers`, just driven by hand.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `401` on token fetch, then `419 No delegation found for "/CN=fts"` in conveyor-submitter logs | `idpsecrets.json` still has literal `<valid client id>`/`<valid client secret>` | Re-run [§3](#3-configure-ls-aai-credentials)'s `sed`; confirm `grep -c "valid client" configs/rucio/idpsecrets.json` → `0` |
+| `"Client id must not be empty!"` from a manual `curl` token check | `$OIDC_CLIENT_ID` escaped inside `docker exec ... bash -c "..."`, so it never substitutes | Substitute on the host shell before the `docker exec` (see [§6](#6-verify-the-oidc-token-flow)) |
+| `exchange returned no token aud=<rse>` | `TOKEN_MODE=managed` but token-exchange not seeded | Re-run `make init TOKEN_MODE=managed`, or use `unmanaged` |
+| `[TokenExchange] ... HTTP 400` | Resource Indicator for that RSE/service not registered | Add the missing `https://<rse>.example.org/` indicator on the LS AAI client |
+| Access-denied org-unit page on login | Identity not yet in the required VO | Register at the `lifescience_test` VO signup link, wait a few minutes |
+| Rucio login page: "could not finalize your token request" | Redirect URI mismatch, or `authorization_code` grant not enabled on the client | Confirm `http://localhost:8090/auth/oidc_{redirect,code,token}` is registered exactly; confirm grant is enabled |
+| `local user for sub claim ... does not exist` from Teapot | `user-mapping.csv` missing the client's own `client_credentials` sub | Decode a `client_credentials` token, add its `sub` to `configs/teapot/user-mapping.csv` |
+| `ERROR One dependency is missing. Details: Missing dependency: gfal2` on `rucio upload`/`download` | Running `rucio` from the host instead of the `rucio-client` container | Use `docker exec compose-rucio-client-1 rucio ...` ([§10](#10-interactive-login--uploaddownload)) |
+| `rucio whoami` inside `rucio-client` auths as the wrong account, or userpass tests suddenly try OIDC | `rucio.cfg` mount was swapped to `oidc-client.cfg`, breaking the `userpass`/`ddmlab` config the pytest suite expects | Keep `rucio.cfg` on `userpass-client.cfg`; `oidc-client.cfg` is mounted at a second path and selected per-command with `RUCIO_CONFIG` ([§10](#10-interactive-login--uploaddownload)) |
+| `rucio whoami` inside `rucio-client` fails with `Connection refused` to `localhost:8090` | `oidc-client.cfg`'s `rucio_host`/`auth_host` point at `localhost:8090` — the host's published port mapping, not reachable from inside another container | Use the container-scoped `oidc-client-internal.cfg` (`rucio_host`/`auth_host = http://rucio-server`), already mounted at `/opt/rucio/etc/oidc-client.cfg` ([§10](#10-interactive-login--uploaddownload)) |
+| Rule stuck `REPLICATING`/`STUCK`, no auth error | Storage rejecting the token shape | Check Teapot/StoRM-WebDAV supports RFC 9068 `at+jwt`; check `scitokens.conf` issuer matches LS AAI's `iss` exactly (trailing slash) |
 
 ## Teardown
 

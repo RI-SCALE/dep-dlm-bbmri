@@ -128,10 +128,29 @@ conveyor logs points back at [§3](#3-configure-ls-aai-credentials)
 (untemplated `idpsecrets.json`) or
 [§1](#1-registering-the-ls-aai-client) (missing resource indicators).
 
-## 8. Watching a transfer manually
+## 8. Watching a transfer complete
 
-Test suite drives the conveyor as one-shot `--run-once` calls
-(`DAEMON_MODE=direct`, the default):
+For interactive use — uploading and watching a rule reach `OK` prefer `DAEMON_MODE=daemons`:
+the conveyor runs as long-lived containers that poll FTS on their own, so a rule created via
+[§10](#10-interactive-login--uploaddownload) converges on its own within
+a cycle or two, instead of you re-running `--run-once` by hand until FTS
+catches up (see the note below — this is exactly what that manual
+loop is compensating for). Set it once before `make start`:
+```bash
+export DAEMON_MODE=daemons
+make start
+```
+Then just watch:
+```bash
+docker logs -f compose-rucio-daemons-conveyor-poller-1
+docker logs -f compose-rucio-daemons-conveyor-finisher-1
+```
+
+**`DAEMON_MODE=direct` (the default) is for the test suite and for
+single-step debugging** — `make test-rucio-transfers` drives the
+conveyor as deterministic one-shot `--run-once` calls so each stage's
+outcome is attributable, and the same commands are useful by hand when
+you want to isolate exactly which stage a transfer is stuck at:
 ```bash
 docker exec compose-rucio-server-1 rucio-judge-evaluator --run-once
 docker exec compose-rucio-server-1 rucio-conveyor-submitter --run-once
@@ -142,13 +161,27 @@ docker exec compose-rucio-client-1 rucio rule list --did ddmlab:<name>
 ```
 - **submitter**: `Submit job <uuid> to https://fts:8446` = reached FTS.
   `exchange returned no token aud=<rse>` = managed token path not seeded
-  — re-run `make init` with `TOKEN_MODE=managed`.
 - **poller**: `state(RequestState.DONE)` = success. `[TokenExchange] ...
   HTTP 400` = resource-indicator/audience issue, not storage.
 - **finisher**: rule lock flips to `OK`.
 
-`DAEMON_MODE=daemons` runs these as long-lived containers instead — tail
-with `docker logs -f compose-rucio-daemons-conveyor-<stage>-1`.
+**One poll often isn't enough in direct mode.** FTS runs the copy
+asynchronously — the first `poller --run-once` frequently reports `0
+requests state changed` because FTS hasn't finished yet, and `finisher`
+then has nothing to do. This isn't stuck; just repeat the poller +
+finisher pair until the poller logs `state: <RequestState.DONE>` and
+rule counters flip (e.g. `[0/1/0]` → `[1/0/0]`):
+```bash
+docker exec compose-rucio-server-1 rucio-conveyor-poller --run-once --older-than 0
+docker exec compose-rucio-server-1 rucio-conveyor-finisher --run-once
+```
+Only treat it as genuinely stuck if repeated polling over ~30–60s shows
+no state change for a trivial-sized file — at that point check the FTS
+job directly rather than guessing:
+```bash
+docker exec compose-fts-1 curl -sk https://localhost:8446/jobs/<job-uuid>
+```
+its `reason` field (if `FAILED`) points at the actual cause.
 
 ## 9. Deletion lifecycle
 
@@ -277,7 +310,6 @@ test-rucio-transfers`, just driven by hand.
 |---|---|---|
 | `401` on token fetch, then `419 No delegation found for "/CN=fts"` in conveyor-submitter logs | `idpsecrets.json` still has literal `<valid client id>`/`<valid client secret>` | Re-run [§3](#3-configure-ls-aai-credentials)'s `sed`; confirm `grep -c "valid client" configs/rucio/idpsecrets.json` → `0` |
 | `"Client id must not be empty!"` from a manual `curl` token check | `$OIDC_CLIENT_ID` escaped inside `docker exec ... bash -c "..."`, so it never substitutes | Substitute on the host shell before the `docker exec` (see [§6](#6-verify-the-oidc-token-flow)) |
-| `exchange returned no token aud=<rse>` | `TOKEN_MODE=managed` but token-exchange not seeded | Re-run `make init TOKEN_MODE=managed`, or use `unmanaged` |
 | `[TokenExchange] ... HTTP 400` | Resource Indicator for that RSE/service not registered | Add the missing `https://<rse>.example.org/` indicator on the LS AAI client |
 | Access-denied org-unit page on login | Identity not yet in the required VO | Register at the `lifescience_test` VO signup link, wait a few minutes |
 | Rucio login page: "could not finalize your token request" | Redirect URI mismatch, or `authorization_code` grant not enabled on the client | Confirm `http://localhost:8090/auth/oidc_{redirect,code,token}` is registered exactly; confirm grant is enabled |

@@ -13,3 +13,4 @@ __pycache__
 envs/*.env
 !envs/*.env.example
 .DS_Store
+configs/rucio/idpsecrets.json

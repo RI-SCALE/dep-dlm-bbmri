@@ -33,10 +33,18 @@ cp envs/ls-aai.env.example envs/ls-aai.env
 source envs/ls-aai.env
 
 # Substitute your credentials into idpsecrets.json
+cp configs/rucio/idpsecrets.json.example configs/rucio/idpsecrets.json
+
 sed -i \
   -e "s|<valid client id>|$OIDC_CLIENT_ID|g" \
   -e "s|<valid client secret>|$OIDC_CLIENT_SECRET|g" \
-  config/rucio/egi-dev/idpsecrets.json
+  configs/rucio/idpsecrets.json
+
+# on macOS
+sed -i '' \
+  -e "s|<valid client id>|$OIDC_CLIENT_ID|g" \
+  -e "s|<valid client secret>|$OIDC_CLIENT_SECRET|g" \
+  configs/rucio/idpsecrets.json
 
 # Start the stack
 make start

@@ -28,9 +28,10 @@ jobs:
 
       - name: Render idpsecrets.json from secrets
         run: |
+          cp configs/rucio/idpsecrets.json.example configs/rucio/idpsecrets.json
           sed -i \
-            -e "s|<valid client id>|${OIDC_CLIENT_ID}|g" \
-            -e "s|<valid client secret>|${OIDC_CLIENT_SECRET}|g" \
+            -e "s|<valid client id>|$OIDC_CLIENT_ID|g" \
+            -e "s|<valid client secret>|$OIDC_CLIENT_SECRET|g" \
             configs/rucio/idpsecrets.json
 
       - name: Start the stack

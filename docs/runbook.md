@@ -182,7 +182,9 @@ export RUCIO_CONFIG=/opt/rucio/etc/oidc-client.cfg
 rucio whoami
 
 # open the printed URL in a browser, log in as your LS AAI identity,
-# paste the code back at the prompt
+# paste the code back at the prompt — the printed URL is prefixed
+# https://, but rucio-server on :8090 only serves plain HTTP; if the
+# browser can't load it, change https:// to http:// and retry
 
 echo "Sample upload" >> /tmp/sample.txt
 rucio -v upload --rse TEAPOT1 --scope randomaccount /tmp/sample.txt
@@ -279,6 +281,7 @@ test-rucio-transfers`, just driven by hand.
 | `[TokenExchange] ... HTTP 400` | Resource Indicator for that RSE/service not registered | Add the missing `https://<rse>.example.org/` indicator on the LS AAI client |
 | Access-denied org-unit page on login | Identity not yet in the required VO | Register at the `lifescience_test` VO signup link, wait a few minutes |
 | Rucio login page: "could not finalize your token request" | Redirect URI mismatch, or `authorization_code` grant not enabled on the client | Confirm `http://localhost:8090/auth/oidc_{redirect,code,token}` is registered exactly; confirm grant is enabled |
+| Browser can't reach the URL `rucio whoami` prints | Printed URL is `https://...` but `rucio-server` on `:8090` only serves plain HTTP | Change `https://` to `http://` in the URL and retry |
 | `local user for sub claim ... does not exist` from Teapot | `user-mapping.csv` missing the client's own `client_credentials` sub | Decode a `client_credentials` token, add its `sub` to `configs/teapot/user-mapping.csv` |
 | `ERROR One dependency is missing. Details: Missing dependency: gfal2` on `rucio upload`/`download` | Running `rucio` from the host instead of the `rucio-client` container | Use `docker exec compose-rucio-client-1 rucio ...` ([§10](#10-interactive-login--uploaddownload)) |
 | `rucio whoami` inside `rucio-client` auths as the wrong account, or userpass tests suddenly try OIDC | `rucio.cfg` mount was swapped to `oidc-client.cfg`, breaking the `userpass`/`ddmlab` config the pytest suite expects | Keep `rucio.cfg` on `userpass-client.cfg`; `oidc-client.cfg` is mounted at a second path and selected per-command with `RUCIO_CONFIG` ([§10](#10-interactive-login--uploaddownload)) |

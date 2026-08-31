@@ -102,7 +102,7 @@ class TestTeapotOIDC:
     via the t_token_provider entry registered during bootstrap.
 
     Source file is seeded via an authenticated WebDAV PUT (no filesystem
-    exec available for Teapot) rather than svc_exec/seed.
+    exec available for Teapot).
     """
 
     def test_teapot1_to_teapot2(self, rucio_client, teapot_token, teapots_ready):

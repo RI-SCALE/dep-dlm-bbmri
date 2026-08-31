@@ -23,29 +23,30 @@ from conftest import (
     prepare_xrd_dest,
     register_replica,
     seed_xrd,
-    svc_exec,
     validate_rule,
 )
+
+import requests
 
 log = logging.getLogger("test-deletion")
 
 SCOPE = "ddmlab"
 
-# Both judge-cleaner and reaper run in the rucio server container.
-# gfal2 is installed at container startup (see docker-compose.yml entrypoint)
-# to satisfy the reaper's Python gfal2 dependency for davs:// physical deletion.
+# Both judge-cleaner and reaper run in the rucio-daemons container; the
+# reaper itself still needs gfal2 there for the actual davs:// physical
+# delete. This test only observes the outcome over HTTP, no docker needed.
 RUCIO_SVC = "rucio-server"
 
 
-def replica_exists_on_xrd(svc: str, pfn: str) -> bool:
-    """Check whether a file exists at the given PFN path inside an XRootD container."""
-
-    local_path = "/" + pfn.split("//", 1)[-1].split("/", 1)[-1]
-    try:
-        svc_exec(svc, ["test", "-f", local_path])
-        return True
-    except RuntimeError:
-        return False
+def replica_exists_on_xrd(pfn: str, token: str) -> bool:
+    """Check whether a file exists at the given PFN over XRootD's HTTP
+    listener — same protocol-level check seed_xrd/prepare_xrd_dest use,
+    no docker exec / gfal2 client needed on the test side."""
+    url = pfn.replace("davs://", "https://", 1)
+    resp = requests.head(
+        url, headers={"Authorization": f"Bearer {token}"}, verify=False, timeout=30
+    )
+    return resp.status_code == 200
 
 
 class TestDeletionLifecycle:
@@ -85,7 +86,7 @@ class TestDeletionLifecycle:
         validate_rule(rucio_client, rule_id, "XRD3→XRD4 (pre-deletion)", RUCIO_SVC)
 
         # Confirm file exists on XRD4 before deletion
-        assert replica_exists_on_xrd("xrd4", dst_pfn), (
+        assert replica_exists_on_xrd(dst_pfn, xrd4_write_token), (
             f"Expected replica to exist on XRD4 before deletion: {dst_pfn}"
         )
         log.info("  ✓ Replica confirmed on XRD4 before deletion")
@@ -128,10 +129,10 @@ class TestDeletionLifecycle:
         # instant — poll briefly rather than checking once immediately after
         # the catalogue-removal loop exits (that's the flaky window).
         deadline = time.time() + 30
-        still_exists = replica_exists_on_xrd("xrd4", dst_pfn)
+        still_exists = replica_exists_on_xrd(dst_pfn, xrd4_write_token)
         while still_exists and time.time() < deadline:
             time.sleep(3)
-            still_exists = replica_exists_on_xrd("xrd4", dst_pfn)
+            still_exists = replica_exists_on_xrd(dst_pfn, xrd4_write_token)
 
         assert not still_exists, (
             f"Expected file to be physically deleted from XRD4: {dst_pfn}"

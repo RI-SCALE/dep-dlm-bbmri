@@ -61,23 +61,6 @@ def _rse_resource(name: str) -> str:
     return f"https://{name}{OIDC_RESOURCE_SUFFIX}/"
 
 
-def svc_exec(svc: str, cmd: list, user: str = None) -> bytes:
-    """Run a command inside a Compose service container."""
-    full = ["docker", "exec"]
-    if user:
-        full += ["--user", user]
-    full += [f"compose-{svc}-1"] + cmd
-
-    result = subprocess.run(full, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"svc_exec failed (exit {result.returncode}): {' '.join(full)}\n"
-            f"stdout: {result.stdout.decode(errors='replace')}\n"
-            f"stderr: {result.stderr.decode(errors='replace')}"
-        )
-    return result.stdout
-
-
 # ── Rucio client (Python API) ─────────────────────────────────────────────
 
 

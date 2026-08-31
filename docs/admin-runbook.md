@@ -1,7 +1,7 @@
 # dep-dlm-bbmri — Admin Runbook
 
 For: standing up the stack and provisioning Rucio for BBMRI users.
-User-facing counterpart: `dep-dlm-bbmri-user-runbook.md`.
+User-facing counterpart: [user-runbook.md](user-runbook.md).
 
 ## You need
 - Docker Engine + Compose plugin, `make`, `bash`, `openssl`, `curl`.
@@ -79,10 +79,10 @@ Tokens are short-lived — re-run the `tok=...` line if `ra` starts failing auth
 
 **Accounts**
 ```bash
-ra account add --type SERVICE --email <email used for ls-aai federation> <service-account>
-ra account add --type USER --email <email used for ls-aai federation> <user-account>
+ra account add --type SERVICE --email <service-account>@rucio <service-account>
+ra account add --type USER --email <user-account>@rucio <user-account>
 ```
-The test fixtures use `ddmlab` (service) and `randomaccount` (user) — same shape for any names you pick. Password-grant/userpass identity registration is skipped for the OIDC-driven account (this deployment uses `client_credentials`) — its OIDC identity comes from subject-token seeding below; individual users' identities are mapped separately, per user, in §6.
+The test fixtures use `ddmlab` (service) and `randomaccount` (user) — same shape for any names you pick. Password-grant/userpass identity registration is skipped for the OIDC-driven account (this deployment uses `client_credentials`) — its OIDC identity comes from subject-token seeding below; individual users' identities are mapped separately, per user, in [§6](#6-map-the-users-identity).
 
 **RSEs — registering real storage, not just the test fixtures**
 
@@ -106,7 +106,7 @@ A few things that differ by role, worth checking against the target's own docs b
 - **Scheme/port**: WebDAV-fronted storage (Teapot, and likely TUBITAK/MUSICA) uses `davs`/`https`; XRootD-native storage uses `davs` on the XRootD HTTP listener port (1094 in the test fixtures) — confirm the actual port with whoever operates the endpoint.
 - **`third_party_copy_read`/`write`**: set based on the RSE's role — a pure source only needs `third_party_copy_read`, a pure destination only `third_party_copy_write`; set both if it can be either.
 - **Distance**: only add it in the direction(s) you actually intend to transfer — `add-distance <source> <dest>` (and the reverse, if bidirectional).
-- **Audience/Resource Indicator**: whatever hostname you register here must also be registered as a Resource Indicator on the LS AAI client (§1) — `resource=` requests for storage you haven't registered will fail regardless of how the RSE itself is configured.
+- **Audience/Resource Indicator**: whatever hostname you register here must also be registered as a Resource Indicator on the LS AAI client ([§1](#1-register-the-ls-aai-oidc-client)) — `resource=` requests for storage you haven't registered will fail regardless of how the RSE itself is configured.
 
 **Scopes & quotas**
 ```bash
@@ -140,9 +140,9 @@ This is one-time per deployment (not per RSE) — you don't need to re-run it wh
 **Subject-token seeding** (always required in this deployment — see above) — mints a `client_credentials` token per seed account and stores it via Rucio's OIDC core (`oidc.save_subject_token`) so token-exchange has something to exchange against. This one's Python-API-only (no `rucio-admin` equivalent) — see `init-testbed.sh`'s `seed_subject_tokens()` if you need to run it by hand.
 
 ## 6. Map the user's identity
-This is the one step that needs input **from** the user, not just for them. Get their `sub` from their own LS AAI login (not a client_credentials token — that `sub` belongs to the client). Easiest: have them run `rucio whoami` with `RUCIO_CONFIG=oidc-client.cfg` once (see user runbook §1) and paste back the `sub` from the token.
+This is the one step that needs input **from** the user, not just for them. Get their `sub` from their own LS AAI login (not a client_credentials token — that `sub` belongs to the client). Easiest: have them log in once per [the user runbook's §1](user-runbook.md#1-log-in) and paste back the `sub` from their token.
 
-Map it to the `<user-account>` you created in §5 (`randomaccount` in the test fixtures) — not necessarily the same account for every user; each user gets their own identity mapped to their own account:
+Map it to the `<user-account>` you created in [§5](#5-initialize-accounts-rses-quotas) (`randomaccount` in the test fixtures) — not necessarily the same account for every user; each user gets their own identity mapped to their own account:
 ```bash
 docker exec -it compose-rucio-server-1 rucio-admin identity add --type OIDC \
   --id "SUB=<their-sub>@lifescience-ri.eu, ISS=https://login.aai.lifescience-ri.eu/oidc/" \
@@ -155,7 +155,7 @@ make verify-idp-token
 make probe-teapot
 make probe-xrootd
 ```
-All green → send the user runbook. A 401 here means client credentials or resource-indicator registration (§1) are wrong — fix before anyone touches storage.
+All green → send the [user runbook](user-runbook.md). A 401 here means client credentials or resource-indicator registration ([§1](#1-register-the-ls-aai-oidc-client)) are wrong — fix before anyone touches storage.
 
 Optionally run the full suite too:
 ```
@@ -182,14 +182,14 @@ Expiring a rule (`rucio update-rule --lifetime -1`) is enough — `rucio-daemons
 ## Admin-side troubleshooting
 | Symptom | Cause | Fix |
 |---|---|---|
-| 401 on token fetch, `419 No delegation found for "/CN=fts"` | `idpsecrets.json` still has literal placeholders | Re-run §3 sed; `grep -c "valid client" configs/rucio/idpsecrets.json` → 0 |
+| 401 on token fetch, `419 No delegation found for "/CN=fts"` | `idpsecrets.json` still has literal placeholders | Re-run [§3](#3-wire-in-credentials) sed; `grep -c "valid client" configs/rucio/idpsecrets.json` → 0 |
 | `Client id must not be empty!` from a manual curl check | `$OIDC_CLIENT_ID` escaped inside `docker exec ... bash -c "..."` | Substitute on the host shell before the `docker exec` |
-| `[TokenExchange] ... HTTP 400` | Resource Indicator missing for that RSE/service | Add `https://<rse>.example.org/` to the LS AAI client (§1) |
+| `[TokenExchange] ... HTTP 400` | Resource Indicator missing for that RSE/service | Add `https://<rse>.example.org/` to the LS AAI client ([§1](#1-register-the-ls-aai-oidc-client)) |
 | "could not finalize your token request" | Redirect URI mismatch, or `authorization_code` grant not enabled | Confirm redirect URIs registered exactly; confirm grant is enabled |
 | `local user for sub claim ... does not exist` from Teapot | client's own client_credentials `sub` missing from mapping | Decode a client_credentials token, add `sub` to `configs/teapot/user-mapping.csv` |
 | Rule stuck `REPLICATING`/`STUCK`, no auth error | storage rejecting token shape | Confirm Teapot/StoRM-WebDAV supports RFC 9068 `at+jwt`; check `scitokens.conf` issuer matches LS AAI `iss` exactly (trailing slash) |
 | User hits access-denied org-unit page | not yet in required VO | Point them at the `lifescience_test` VO signup |
-| `ra` commands start failing auth partway through §5 | OIDC `client_credentials` token in `$tok` expired mid-session | Re-run the `tok=...` line to mint a fresh one |
+| `ra` commands start failing auth partway through [§5](#5-initialize-accounts-rses-quotas) | OIDC `client_credentials` token in `$tok` expired mid-session | Re-run the `tok=...` line to mint a fresh one |
 
 ## Teardown
 ```

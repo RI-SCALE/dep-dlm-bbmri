@@ -2,7 +2,6 @@ SHELL       := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
-DAEMON_MODE ?= direct
 SERVICES    ?=
 
 COMPOSE_FILE := docker-compose.yml
@@ -30,19 +29,13 @@ define require_oidc
 	    exit 1; }
 endef
 
-ifeq ($(filter $(DAEMON_MODE),direct daemons),)
-$(error DAEMON_MODE must be 'direct' or 'daemons', got '$(DAEMON_MODE)')
-endif
-
 .PHONY: help
 help: ## Show this help
 	@echo ''
 	@echo 'dep-dlm-bbmri'
 	@echo ''
-	@echo '  DAEMON_MODE = $(DAEMON_MODE) (direct | daemons)'
-	@echo ''
 	@echo 'Usage:'
-	@echo '  make <target> [DAEMON_MODE=direct|daemons] [SERVICES="svc1 svc2"]'
+	@echo '  make <target> [SERVICES="svc1 svc2"]'
 	@echo ''
 	@awk 'BEGIN {FS = ":.*?## "} \
 	    /^[a-zA-Z0-9_%-]+:.*?## / { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } \
@@ -73,7 +66,7 @@ verify-idp-token: ## Verify OIDC token flow against LS AAI. Needs OIDC_CLIENT_SE
 
 .PHONY: start
 start: ## Start the stack
-	COMPOSE_PROFILES=$(DAEMON_MODE) $(COMPOSE) up -d $(SERVICES)
+	$(COMPOSE) up -d $(SERVICES)
 
 .PHONY: stop
 stop: ## Stop the stack, remove volumes
@@ -94,11 +87,11 @@ logs: ## Tail logs (SERVICES="..." for a subset)
 
 .PHONY: test-rucio-transfers
 test-rucio-transfers: ## Rucio E2E transfer test
-	$(EXEC_RUCIO) bash -c "$(TEST_OIDC_ENV) DAEMON_MODE=$(DAEMON_MODE) pytest /tests/test_rucio_transfers.py -v"
+	$(EXEC_RUCIO) bash -c "$(TEST_OIDC_ENV) pytest /tests/test_rucio_transfers.py -v"
 
 .PHONY: test-rucio-deletion
 test-rucio-deletion: ## Rucio E2E deletion test
-	$(EXEC_RUCIO) bash -c "$(TEST_OIDC_ENV) DAEMON_MODE=$(DAEMON_MODE) pytest /tests/test_rucio_deletion.py -v"
+	$(EXEC_RUCIO) bash -c "$(TEST_OIDC_ENV) pytest /tests/test_rucio_deletion.py -v"
 
 .PHONY: probe-teapot
 probe-teapot: ## Teapot WebDAV probe with OIDC tokens

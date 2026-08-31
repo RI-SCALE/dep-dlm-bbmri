@@ -63,10 +63,8 @@ See the [Runbook](docs/runbook.md) for full installation, configuration and LS A
 ```bash
 dep-dlm-bbmri
 
-  DAEMON_MODE = direct (direct | daemons)
-
 Usage:
-  make <target> [DAEMON_MODE=direct|daemons] [SERVICES="svc1 svc2"]
+  make <target> [SERVICES="svc1 svc2"]
 
   help                 Show this help
 

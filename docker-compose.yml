@@ -259,7 +259,6 @@ services:
   rucio-daemons:
     image: rucio/rucio-daemons@sha256:b90c7b20601a3731d8fb956b4e46b55f28265b95ca7ec79319ce3866b338364a
     hostname: rucio-daemons
-    profiles: ["daemons"]
     depends_on:
       ruciodb:
         condition: service_healthy

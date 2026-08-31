@@ -22,12 +22,9 @@ from conftest import (
     compute_pfn,
     prepare_xrd_dest,
     register_replica,
-    run_daemons,
     seed_xrd,
     svc_exec,
     validate_rule,
-    advance_pipeline,
-    DELETION_DAEMONS,
 )
 
 log = logging.getLogger("test-deletion")
@@ -38,14 +35,6 @@ SCOPE = "ddmlab"
 # gfal2 is installed at container startup (see docker-compose.yml entrypoint)
 # to satisfy the reaper's Python gfal2 dependency for davs:// physical deletion.
 RUCIO_SVC = "rucio-server"
-
-
-def run_deletion_daemons(rucio_svc: str = RUCIO_SVC) -> None:
-    advance_pipeline(
-        rucio_svc,
-        DELETION_DAEMONS,
-        keywords=("warning", "error", "delet", "expir", "reap", "tomb"),
-    )
 
 
 def replica_exists_on_xrd(svc: str, pfn: str) -> bool:
@@ -92,7 +81,7 @@ class TestDeletionLifecycle:
         register_replica(rucio_client, "XRD3", SCOPE, name, src_pfn, size, adler32)
         rule_id = add_rule(rucio_client, SCOPE, name, "XRD4")
 
-        run_daemons(RUCIO_SVC)
+        # Wait for rucio-daemons (always-on) to converge the rule
         validate_rule(rucio_client, rule_id, "XRD3→XRD4 (pre-deletion)", RUCIO_SVC)
 
         # Confirm file exists on XRD4 before deletion
@@ -110,10 +99,6 @@ class TestDeletionLifecycle:
         log.info("  ✓ Rule deletion requested")
 
         # ── Step 3+4: judge-cleaner releases lock, reaper deletes physically ─
-        # In direct mode advance_pipeline runs the daemons synchronously;
-        # in daemon mode it's a no-op and the long-running daemons converge
-        # on their own loop — so poll until the replica is gone either way.
-        run_deletion_daemons(RUCIO_SVC)
 
         deadline = time.time() + 120
         xrd4_pfns = None

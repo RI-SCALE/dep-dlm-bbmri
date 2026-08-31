@@ -37,8 +37,8 @@ source envs/ls-aai.env
 
 cp configs/rucio/idpsecrets.json.example configs/rucio/idpsecrets.json
 sed -i \
-  -e "s|<valid client id>|$OIDC_CLIENT_ID|g" \
-  -e "s|<valid client secret>|$OIDC_CLIENT_SECRET|g" \
+  -e "s|<valid client id>|${OIDC_CLIENT_ID}|g" \
+  -e "s|<valid client secret>|${OIDC_CLIENT_SECRET}|g" \
   configs/rucio/idpsecrets.json
 ```
 Substitute on the host shell, not inside a quoted `docker exec ... bash -c "..."` string — the container sees empty vars otherwise. Never commit the substituted file: `git checkout -- configs/rucio/idpsecrets.json` when done.
@@ -79,8 +79,8 @@ Tokens are short-lived — re-run the `tok=...` line if `ra` starts failing auth
 
 **Accounts**
 ```bash
-ra account add --type SERVICE --email <service-account>@rucio <service-account>
-ra account add --type USER --email <user-account>@rucio <user-account>
+ra account add --type SERVICE --email <email used for ls-aai federation> <service-account>
+ra account add --type USER --email <email used for ls-aai federation> <user-account>
 ```
 The test fixtures use `ddmlab` (service) and `randomaccount` (user) — same shape for any names you pick. Password-grant/userpass identity registration is skipped for the OIDC-driven account (this deployment uses `client_credentials`) — its OIDC identity comes from subject-token seeding below; individual users' identities are mapped separately, per user, in §6.
 
@@ -141,10 +141,12 @@ This is one-time per deployment (not per RSE) — you don't need to re-run it wh
 
 ## 6. Map the user's identity
 This is the one step that needs input **from** the user, not just for them. Get their `sub` from their own LS AAI login (not a client_credentials token — that `sub` belongs to the client). Easiest: have them run `rucio whoami` with `RUCIO_CONFIG=oidc-client.cfg` once (see user runbook §1) and paste back the `sub` from the token.
+
+Map it to the `<user-account>` you created in §5 (`randomaccount` in the test fixtures) — not necessarily the same account for every user; each user gets their own identity mapped to their own account:
 ```bash
 docker exec -it compose-rucio-server-1 rucio-admin identity add --type OIDC \
   --id "SUB=<their-sub>@lifescience-ri.eu, ISS=https://login.aai.lifescience-ri.eu/oidc/" \
-  --account randomaccount --email <their-email>
+  --account <user-account> --email <their-email>
 ```
 
 ## Sanity check before handing off
@@ -162,35 +164,20 @@ make test-rucio-deletion
 ```
 Every rule should reach `state=OK`; every pytest case `PASSED`.
 
-## Advanced: debugging a stuck transfer
-Two conveyor modes:
-- `DAEMON_MODE=daemons` — long-lived containers poll FTS on their own. Set once before `make start`, then watch logs:
-  ```bash
-  export DAEMON_MODE=daemons
-  make start
-  docker logs -f compose-rucio-daemons-conveyor-poller-1
-  docker logs -f compose-rucio-daemons-conveyor-finisher-1
-  ```
-- `DAEMON_MODE=direct` (default, used by the test suite) — deterministic one-shot `--run-once` calls, useful for isolating exactly which stage is stuck:
-  ```bash
-  docker exec compose-rucio-server-1 rucio-judge-evaluator --run-once
-  docker exec compose-rucio-server-1 rucio-conveyor-submitter --run-once
-  docker exec compose-rucio-server-1 rucio-conveyor-poller --run-once --older-than 0
-  docker exec compose-rucio-server-1 rucio-conveyor-finisher --run-once
-  docker exec compose-rucio-client-1 rucio rule list --did ddmlab:<name>
-  ```
-One poll often isn't enough — FTS is async. Repeat poller + finisher until the poller logs `state: <RequestState.DONE>` and rule counters flip. Only treat it as genuinely stuck if repeated polling over ~30–60s shows no change; then check the FTS job directly:
+## Advanced: watching a transfer
+`rucio-daemons` runs unconditionally with `make start` — one container (`compose-rucio-daemons-1`) running the full daemon set (judge-evaluator, conveyor submitter/poller/finisher, judge-cleaner, reaper) continuously in the background. Nothing to advance manually — a rule created via upload/`add-rule` converges on its own. Watch it:
+```bash
+docker logs -f compose-rucio-daemons-1
+docker exec compose-rucio-client-1 rucio rule list --did ddmlab:<name>
+```
+If a rule sits in `REPLICATING`/`STUCK` longer than a cycle or two, check the FTS job directly rather than guessing:
 ```
 docker exec compose-fts-1 curl -sk https://localhost:8446/jobs/<job-uuid>
 ```
+its `reason` field (if `FAILED`) points at the actual cause.
 
-## Deletion daemons
-A user expiring their own rule (`rucio update-rule --lifetime -1`) needs these run server-side to actually reclaim storage:
-```bash
-docker exec compose-rucio-server-1 rucio-judge-cleaner --run-once
-docker exec compose-rucio-server-1 rucio-reaper --run-once --greedy
-```
-`make test-rucio-deletion` exercises this end to end.
+## Deletion
+Expiring a rule (`rucio update-rule --lifetime -1`) is enough — `rucio-daemons` picks it up (judge-cleaner + reaper) and reclaims storage automatically, no manual invocation needed. `make test-rucio-deletion` exercises this end to end.
 
 ## Admin-side troubleshooting
 | Symptom | Cause | Fix |

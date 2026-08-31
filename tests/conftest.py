@@ -31,20 +31,6 @@ TEAPOT2_URL = os.environ.get("TEAPOT2_URL") or (
 
 CFG_RUCIO = "/opt/rucio/etc/rucio.cfg"
 
-DAEMON_MODE = os.environ.get("DAEMON_MODE") or "direct"
-
-DEFAULT_CONVEYOR = (
-    ["rucio-judge-evaluator", "--run-once"],
-    ["rucio-conveyor-submitter", "--run-once"],
-    ["rucio-conveyor-poller", "--run-once", "--older-than", "0"],
-    ["rucio-conveyor-finisher", "--run-once"],
-)
-
-DELETION_DAEMONS = (
-    ["rucio-judge-cleaner", "--run-once"],
-    ["rucio-reaper", "--run-once", "--greedy"],
-)
-
 # ── OIDC provider config (env-overridable) ─────────────────────────────────
 
 OIDC_ISSUER = (
@@ -182,55 +168,6 @@ def add_rule(client, scope: str, name: str, dst_rse: str) -> str:
     return rule_id
 
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--daemon-mode",
-        action="store",
-        default=os.environ.get("DAEMON_MODE", "direct"),
-        choices=("direct", "daemons"),
-        help="direct = invoke --run-once via CLI (deterministic); "
-        "daemons = rely on long-running daemons, poll for state",
-    )
-
-
-@pytest.fixture(scope="session")
-def daemon_mode(pytestconfig):
-    return pytestconfig.getoption("--daemon-mode")
-
-
-def _log_daemon_output(out: bytes, keywords=None) -> None:
-    """Log interesting lines from a daemon's --run-once output."""
-    keywords = keywords or ("warning", "error", "failed", "submit", "checksum")
-    for line in out.decode(errors="replace").splitlines():
-        if any(k in line.lower() for k in keywords):
-            log.info("    | %s", line)
-
-
-def advance_pipeline(
-    rucio_svc="rucio-server", daemons=None, mode=None, keywords=None
-) -> None:
-    """Advance a Rucio pipeline.
-
-    mode='direct'  : invoke each daemon with --run-once via svc_exec
-                     (deterministic; current behaviour).
-    mode='daemons' : rely on long-running daemons in the rucio-daemons
-                     service — no-op here; validate_rule's polling waits
-                     for the daemons to converge the rule.
-    """
-    mode = mode or DAEMON_MODE
-    if mode == "daemons":
-        return
-    for cmd in daemons or DEFAULT_CONVEYOR:
-        log.info("  → %s %s", rucio_svc, " ".join(cmd))
-        out = svc_exec(rucio_svc, cmd)
-        _log_daemon_output(out, keywords)
-
-
-def run_daemons(rucio_svc: str = "rucio-server") -> None:
-    """Back-compat wrapper: advance the conveyor pipeline."""
-    advance_pipeline(rucio_svc, DEFAULT_CONVEYOR)
-
-
 def validate_rule(
     client,
     rule_id: str,
@@ -238,7 +175,11 @@ def validate_rule(
     rucio_svc: str = "rucio-server",
     timeout: int = 300,
 ) -> None:
-    """Poll until locks_ok >= 1 and locks_replicating == 0, cycling daemons each iteration."""
+    """Poll until locks_ok >= 1 and locks_replicating == 0.
+
+    rucio-daemons runs unconditionally now and drives the conveyor itself —
+    this just waits for it, it doesn't advance anything.
+    """
     from rucio.common.exception import RuleNotFound
 
     log.info("=== Validating rule %s (%s) ===", rule_id, label)
@@ -270,7 +211,6 @@ def validate_rule(
             log.info("  ✓ %s passed (rule_id=%s)", label, rule_id)
             return
 
-        run_daemons(rucio_svc)
         time.sleep(5)
 
     raise TimeoutError(

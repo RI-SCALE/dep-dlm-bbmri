@@ -56,7 +56,7 @@ make test-rucio-transfers
 make test-rucio-deletion
 ```
 
-See the [Runbook](docs/runbook.md) for full installation, configuration and LS AAI registration steps.
+See the [Admin Runbook](docs/admin-runbook.md) for full installation, configuration and LS AAI registration steps or the [User Runbook](docs/user-runbook.md) for logging in and running transfers.
 
 ## Make targets
 

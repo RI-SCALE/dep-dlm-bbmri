@@ -56,8 +56,6 @@ make test-rucio-transfers
 make test-rucio-deletion
 ```
 
-See the [Admin Runbook](docs/admin-runbook.md) for full installation, configuration and LS AAI registration steps, the [User Runbook](docs/user-runbook.md) for logging in and running transfers or [Known Destination RSEs](docs/known-destination-rses.md) for ready-to-use configs for existing HPC storage (MUSICA, TUBITAK).
-
 ## Make targets
 
 ```bash
@@ -92,6 +90,13 @@ Cleanup
   clear-artifacts      Remove certs, volumes, Python artifacts
   cleanup              Delete rules/replicas/distances (and RSEs unless KEEP_RSES=1) created by init/tests
 ```
+
+## Docs
+
+- [Admin Runbook](docs/admin-runbook.md) — installation, configuration, LS AAI registration
+- [User Runbook](docs/user-runbook.md) — logging in, running transfers
+- [Known Destination RSEs](docs/known-destination-rses.md) — ready-made configs for existing HPC storage (MUSICA, TUBITAK)
+- [Deployment View](docs/deployment-view.md) — overall topology
 
 ## Support
 

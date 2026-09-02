@@ -147,6 +147,11 @@ Map it to the `<user-account>` you created in [§5](#5-initialize-accounts-rses-
 docker exec -it compose-rucio-server-1 rucio-admin identity add --type OIDC \
   --id "SUB=<their-sub>@lifescience-ri.eu, ISS=https://login.aai.lifescience-ri.eu/oidc/" \
   --account <user-account> --email <their-email>
+
+# Example
+docker exec -it compose-rucio-server-1 rucio-admin identity add --type OIDC \
+  --id "SUB=28f7bc3a2d32a4a722f6eb24f77f7fbe42eb6471@lifescience-ri.eu, ISS=https://login.aai.lifescience-ri.eu/oidc/" \
+  --account randomaccount --email marvin.gajek@cern.ch
 ```
 
 ## Sanity check before handing off

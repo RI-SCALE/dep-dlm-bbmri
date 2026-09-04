@@ -95,6 +95,7 @@ Cleanup
 - [User Runbook](docs/user-runbook.md) — logging in, running transfers
 - [Known Destination RSEs](docs/known-destination-rses.md) — ready-made configs for existing HPC storage (MUSICA, TUBITAK)
 - [Deployment View](docs/deployment-view.md) — overall topology
+- [Backlog](BACKLOG.md) — open points and known limitations
 
 ## Support
 
